@@ -694,9 +694,11 @@ end
 if keyword_set(doBrian) then begin
   ;;; Brian's test
 
-  spots = [ createSpot( 2, 10, .8) ]
+  spots = [ createSpot( 12, 170, 1.5) $
+          , createSpot( 12, 100, 2.0) $
+          ]
 
-  rtn = ilc([7,4,2],-2,-40,20 ,obsWLong=indgen(37)*10 ,nPixels=64, spots=spots)
+  rtn = ilc([7,5,3],2,-70,20 ,obsWLong=indgen(37)*10 ,nPixels=64, spots=spots)
 
   for i=0,35 do $
     tvscl, rtn[i].img $
