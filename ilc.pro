@@ -170,7 +170,7 @@ function nx3_crossp,v1,v2
           ]
 end
 
-function getSpot, Lat, WLong, Radius, brightness=bArg
+function createSpot, Lat, WLong, Radius, brightness=bArg
   return, { LatDeg: double(Lat[0]) $
           , WLongDeg: double(WLong[0]) $
           , Radius: double(Radius[0]) $
@@ -184,7 +184,7 @@ end
 ;;; the ellipsoid surface point using the ellipsoid axes
 
 pro spotFiddle, axesIn, spotIn
-common rpdCommon, rpd, dpr
+common rpdCommon
   rpdCommonSet
 
   rWLong = rpd * spotIn.WLongDeg
@@ -247,13 +247,13 @@ common rpdCommon
     endfor
 
     return,rtn
-    
+
   endif
 
   ;;; N.B. See below for detailed explanation of PhotFunc and Arg2PhotFunc
 
   ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-  ;;; Radians per Degree
+  ;;; Set rpd and dpr (Radians Per Degree and reciprocal)
   rpdCommonSet
   dodebug = keyword_set(debugArg)
 
@@ -576,7 +576,7 @@ common rpdCommon
   ;;;   
   ;;; - Albedo Map is not yet implemented; probably will be handled in
   ;;;   sphere system section above
-;stop
+
   if n_elements(PhotFunc) eq 1L then begin
     eAlpha = acos( (vdot(eObs,eSun) < 1d0) > (-1d0) )
     eBrightnesses = call_function( PhotFunc0, eMuNaught, eMu, eAlpha, Arg2PhotFunc)
@@ -593,14 +593,19 @@ common rpdCommon
   ;;; zero
 
   nSpots = n_elements(spots)
-  iwNonZero = where( eBrightnesses gt 0d0 and nx3_vnormsq(sPixels) gt 0d0, ctNonZero)
+
+  if ctInside gt 0L then begin
+    iwNonZero = where( eBrightnesses[iwInside] gt 0d0 and nx3_vnormsq(sIntersects) gt 0d0, ctNonZero)
+  endif else begin
+    ctNonZero = 0L
+  endelse
 
   if ctNonZero gt 0L and nSpots gt 0L then begin
 
-    ;;; Convert sPixels with non-zero brighnesses from sphere to ellipsoid
+    ;;; Convert sPixels with non-zero brightnesses from sphere to ellipsoid
     ;;; system
 
-    ePixelsNonZero = sPixels[iwNonZero,*] * (sph2ell ## nPixelSqOnes[0:ctNonZero-1L])
+    ePixelsNonZero = sIntersects[iwNonZero,*] * (sph2ell ## nPixelSqOnes[0:ctNonZero-1L])
 
     ;;; Loop over input spots
 
@@ -609,57 +614,44 @@ common rpdCommon
 
       ;;; Calculate this spot center on ellipsoid surface per ellipsoid
       ;;; axes
-      spot.WLongDeg=spot.WLongDeg-(obsWlong*(180./!PI))
-;stop
-      spotFiddle, axes, spot
 
+      spotFiddle, axes, spot
 
       ;;; Calculate offsets from this spot's center to pixel positions,
       ;;; find which pixels are in the spot i.e. within this spot's radius
       ;;; of its center
 
-      eSpotOffsets = ePixelsNonZero - spot.Center ## nPixelSqOnes[0:ctNonZero-1L]
-      iwInSpot = where( nx3_vnormsq( eSpotOffsets) le (spot.Radius^2), ctInSpot )
-      iwOutSpot=where(nx3_vnormsq(eSpotoffsets) gt (spot.Radius^2),ctOutSpot)
-      
+      eSpotOffsets = ePixelsNonZero - (spot.Center ## nPixelSqOnes[0:ctNonZero-1L])
+      iwInSpot = where( nx3_vnormsq( eSpotOffsets) le (spot.Radius^2), ctInSpot, complement=iwOutSpot )
+      ;;;iwOutSpot=where(nx3_vnormsq(eSpotoffsets) gt (spot.Radius^2),ctOutSpot)
+
 ;      print,spot.center
 ;      pause=get_kbrd()
 
       ;;; Scale brightnesses of pixels in this spot
 
-      if ctInSpot gt 0L then begin
-        if (n_elements(spotalbedo) gt 0 ) then begin
-          eBrightnesses[iwNonZero[iwInSpot]] = ebrightnesses[iwnonzero[iwinSpot]]*spotalbedo[iSpot]
-        endif else begin
-          eBrightnesses[iwNonZero[iwInSpot]] *= spot.Brightness
-        endelse
-      endif 
-      if (n_elements(bgAlbedo) gt 0) then begin
-        eBrightnesses[iwNonZero[iwOutSpot]] = ebrightnesses[iwnonzero[iwOutSpot]]*bgAlbedo
+      eBrightnesses[iwInside[iwNonZero[iwInSpot]]] *= spot.Brightness
+
+      if ctInSpot lt ctNonZero and n_elements(bgAlbedo) gt 0 then begin
+        eBrightnesses[iwInside[iwNonZero[iwOutSpot]]] = eBrightnesses[iwInside[iwNonZero[iwOutSpot]]]*bgAlbedo
       endif
 
     endfor ;;; for iSpot=0L,nSpots-1L
   endif ;;; if ctNonZero gt 0L and nSpots gt 0L
 
-  if (n_elements(bgAlbedo) gt 0 AND nSpots eq 0L) then begin
+  if n_elements(bgAlbedo) gt 0 AND nSpots eq 0L then begin
     eBrightnesses=eBrightnesses*bgAlbedo
   endif
 
-;stop
-  if (n_elements(scaling) eq 0) then begin
-    img = make_array( nPixels, nPixels, val=0d0 )
-    img[*] = eBrightnesses
-  endif else begin
-    ebrightnesses2=ebrightnesses
-    if (n_elements(bgalbedo) gt 0 AND n_elements(spotalbedo) gt 0) then begin
-      scalar=max([bgalbedo,spotalbedo])
-    endif else begin
-      scalar=max(ebrightnesses)
-    endelse
-    ebrightnesses2[0]=scalar
-    img = make_array( nPixels, nPixels, val=0d0 )
-    img[*] = eBrightnesses2
-  endelse
+  if keyword_set(scaling) then begin
+    array = [0d0]
+    if n_elements(bgalbedo) gt 0L then array = [ array, bgalbedo ]
+    if nSpots gt 0L then array = [ array, spots.Brightness ]
+    eBrightnesses[0]=max(array)
+  endif
+
+  img = make_array( nPixels, nPixels, val=0d0 )
+  img[*] = eBrightnesses
 
 
   ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -674,11 +666,11 @@ common rpdCommon
           }
 end
 
-!quiet=1
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; Test code:  .run ilc.pro
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+!quiet=1
 
 ;;; Get lightcurve of [5,3,1] triaxial ellipsoid at 37 sub-observer
 ;;; West Longitudes at 10-degree increments (0,10,20,...,360), with 
@@ -687,10 +679,6 @@ end
 ;;; - sub-observer latitude = 20deg (20N)
 ;;; - 64x64 pixel images
 
-
-spots = [ getSpot( 20, 10, 2.8) ]
-
-rtn = ilc([7,4,2],-10,60,10 ,obsWLong=indgen(37)*10 ,nPixels=64, spots=spots)
 
 
 ;catcherr=0L
@@ -705,43 +693,53 @@ rtn = ilc([7,4,2],-10,60,10 ,obsWLong=indgen(37)*10 ,nPixels=64, spots=spots)
   tv,make_array(!D.X_SIZE*2,!D.Y_SIZE*2,val=255b)
 ;endelse
 
-for i=0,35 do $
-  tvscl, rtn[i].img $
-       , 64+(i MOD 9)*66, 64+(i/9)*66  ;;; display 36 images
+if keyword_set(doBrian) then begin
+  ;;; Brian's test
 
-plot,rtn.obsWLongDeg,rtn.dib $
-    , XSTYLE=1, XTICKINTERVAL=90 $
-    , PSYM=-6 $
-    , SYMSIZE=1.5 $
-    , XTITLE='Sub-observer longitude, degW' $
-    , YTITLE='Disk-Integrated Brightness, arbitrary units' $
-    , COLOR=ishft(255L,16) $
-    , /NOERASE, /NOCLIP  ;;; Over-plot lightcurve in blue
-    
-; OR!
+  spots = [ createSpot( 2, 10, .8) ]
 
-spots = [ getSpot( 20, 10, 2.8) ]
-rtn=ilc([4,4,4],0,10,0,obsWLong=indgen(37)*10,nPixels=64,bgAlbedo=0.6,$
-spotalbedo=[0.7],spots=spots,/scaling)
+  rtn = ilc([7,4,2],-2,-40,20 ,obsWLong=indgen(37)*10 ,nPixels=64, spots=spots)
 
-tv,make_array(!D.X_SIZE*2,!D.Y_SIZE*2,val=255b)
+  for i=0,35 do $
+    tvscl, rtn[i].img $
+         , 64+(i MOD 9)*66, 64+(i/9)*66  ;;; display 36 images
 
-for i=0,35 do tvscl, rtn[i].img , 64+(i MOD 9)*66, 64+(i/9)*66  ;;; display 36 images
+  !x.tickinterval = 90
+  plot,rtn.obsWLongDeg,rtn.dib $
+      , XSTYLE=1 $
+      , PSYM=-6 $
+      , SYMSIZE=1.5 $
+      , XTITLE='Sub-observer longitude, degW' $
+      , YTITLE='Disk-Integrated Brightness, arbitrary units' $
+      , COLOR=ishft(255L,16) $
+      , /NOERASE, /NOCLIP  ;;; Over-plot lightcurve in blue
 
-tots=rtn.dib
-dmags=make_array(n_elements(tots),value=0d)
-for i=0,n_elements(tots)-1 do dmags[i]=-2.5*alog10(tots[i]/median(tots,/even)) 
+endif else begin
+  ;;; OR Sarah's test
 
-y1=max(dmags)+(0.1*(max(dmags)-min(dmags)))
-y2=min(dmags)-(0.1*(max(dmags)-min(dmags)))
-plot,rtn.obsWLongDeg,dmags,yr=[y1,y2],/ystyle $
-    , XSTYLE=1, XTICKINTERVAL=90 $
-    , PSYM=-6 $
-    , SYMSIZE=1.5 $
-    , XTITLE='Sub-observer longitude, degW' $
-    , YTITLE='Disk-Integrated Brightness, arbitrary units' $
-    , COLOR=ishft(255L,16) $
-    , /NOERASE, /NOCLIP  ;;; Over-plot lightcurve in blue
+  spots = [ createSpot( 20, 10, 2.8, br=0.7) ]
+
+  rtn=ilc([4,4,4],0,10,0,obsWLong=indgen(37)*10,nPixels=64,bgAlbedo=0.6 $
+         ,spots=spots[0:0],/scaling)
+
+  for i=0,35 do tvscl, rtn[i].img , 64+(i MOD 9)*66, 64+(i/9)*66  ;;; display 36 images
+
+  tots=rtn.dib
+  dmags=make_array(n_elements(tots),value=0d)
+  for i=0,n_elements(tots)-1 do dmags[i]=-2.5*alog10(tots[i]/median(tots,/even)) 
+
+  y1=max(dmags)+(0.1*(max(dmags)-min(dmags)))
+  y2=min(dmags)-(0.1*(max(dmags)-min(dmags)))
+  !x.tickinterval = 90
+  plot,rtn.obsWLongDeg,dmags,yr=[y1,y2],/ystyle $
+      , XSTYLE=1 $
+      , PSYM=-6 $
+      , SYMSIZE=1.5 $
+      , XTITLE='Sub-observer longitude, degW' $
+      , YTITLE='Disk-Integrated Brightness, arbitrary units' $
+      , COLOR=ishft(255L,16) $
+      , /NOERASE, /NOCLIP  ;;; Over-plot lightcurve in blue
+endelse
 
 
 ;;; To write a PNG of the plot:
