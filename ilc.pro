@@ -170,7 +170,7 @@ function nx3_crossp,v1,v2
           ]
 end
 
-function getDot, Lat, WLong, Radius, brightness=bArg
+function getSpot, Lat, WLong, Radius, brightness=bArg
   return, { LatDeg: double(Lat[0]) $
           , WLongDeg: double(WLong[0]) $
           , Radius: double(Radius[0]) $
@@ -180,18 +180,18 @@ function getDot, Lat, WLong, Radius, brightness=bArg
 end
 
 
-;;; Convert dot center's body-centric Latitude and West Longitude to
+;;; Convert spot center's body-centric Latitude and West Longitude to
 ;;; the ellipsoid surface point using the ellipsoid axes
 
-pro dotFiddle, axesIn, dotIn
+pro spotFiddle, axesIn, spotIn
 common rpdCommon, rpd, dpr
   rpdCommonSet
 
-  rWLong = rpd * dotIn.WLongDeg
-  rLat = rpd * dotIn.LatDeg
+  rWLong = rpd * spotIn.WLongDeg
+  rLat = rpd * spotIn.LatDeg
   cosLat = cos(rLat)
-  dotXYZ = [cos(rWLong)*cosLat, -sin(rWLong)*cosLat, sin(rLat)]
-  dotIn.Center = dotXyz / sqrt( vnormsq(dotXYZ/axesIn) )
+  spotXYZ = [cos(rWLong)*cosLat, -sin(rWLong)*cosLat, sin(rLat)]
+  spotIn.Center = spotXyz / sqrt( vnormsq(spotXYZ/axesIn) )
   return
 end
 
@@ -209,7 +209,10 @@ function ilc $
 , albedoMap=albedoMap $   ;;; Albedo map (not yet implemented)
 , PhotFunc=PhotFunc $     ;;; String; name of photometric func
 , Arg2PhotFunc=Args2PhotFunc $  ;;; Optional argument to PhotFunc
-, dots=dots $             ;;; Blacked-out surface spots
+, spots=spots $           ;;; Surface spots
+, bgAlbedo=bgAlbedo $     ;;; Background albedo (0 to 1)
+, spotAlbedo=spotAlbedo $ ;;; nSpot element containing the albedo of each spot
+, scaling=scaling $       ;;; if this keyword is set, the .img files will be normalized to each other
 , debug=debugArg
 
 common rpdCommon
@@ -230,7 +233,10 @@ common rpdCommon
                 , albedoMap=albedoMap $
                 , PhotFunc=PhotFunc $
                 , Arg2PhotFunc=Args2PhotFunc $
-                , dots=dots $
+                , spots=spots $
+                , bgAlbedo=bgAlbedo $
+                , spotAlbedo=spotAlbedo $ 
+                , scaling=scaling $
                 , debug=debugArg $
                 )
       if iLongitude eq 0L then begin
@@ -497,11 +503,11 @@ common rpdCommon
     ;;; be inverted; dot products of [cross products of tangents] and
     ;;; intersection points will be negative for those that need inverting.
 
-    sDots = nx3_vdot( nx3_crossp(sInsideTangent0, sInsideTangent1), sIntersects )
+    sNormVdots = nx3_vdot( nx3_crossp(sInsideTangent0, sInsideTangent1), sIntersects )
 
     ;;; - Invert sInsideTangent0 for any negative dot products
 
-    iwNeg = where( sDots lt 0d0, ctNeg )
+    iwNeg = where( sNormVdots lt 0d0, ctNeg )
     if ctNeg gt 0L then begin
       sInsideTangent0[iwNeg,*] = - sInsideTangent0[iwNeg,*]
     endif
@@ -570,7 +576,7 @@ common rpdCommon
   ;;;   
   ;;; - Albedo Map is not yet implemented; probably will be handled in
   ;;;   sphere system section above
-
+;stop
   if n_elements(PhotFunc) eq 1L then begin
     eAlpha = acos( (vdot(eObs,eSun) < 1d0) > (-1d0) )
     eBrightnesses = call_function( PhotFunc0, eMuNaught, eMu, eAlpha, Arg2PhotFunc)
@@ -579,50 +585,81 @@ common rpdCommon
     eBrightnesses = eMuNaught
   endelse
 
+  if (n_elements(bgAlbedo) gt 0) then eBrightnesses = eBrightnesses * double(bgAlbedo)
 
   ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-  ;;; Adjust for "dots" on ellipsoid surface
-
-  ;;; Only adjust if there are input dots and where brightnesses are not
+  ;;; Adjust for "spots" on ellipsoid surface
+  ;;; Only adjust if there are input spots and where brightnesses are not
   ;;; zero
 
-  nDots = n_elements(dots)
+  nSpots = n_elements(spots)
   iwNonZero = where( eBrightnesses gt 0d0 and nx3_vnormsq(sPixels) gt 0d0, ctNonZero)
 
-  if ctNonZero gt 0L and nDots gt 0L then begin
+  if ctNonZero gt 0L and nSpots gt 0L then begin
 
     ;;; Convert sPixels with non-zero brighnesses from sphere to ellipsoid
     ;;; system
 
     ePixelsNonZero = sPixels[iwNonZero,*] * (sph2ell ## nPixelSqOnes[0:ctNonZero-1L])
 
-    ;;; Loop over input dots
+    ;;; Loop over input spots
 
-    for iDot=0L,nDots-1L do begin
-      dot = dots[iDot]
+    for iSpot=0L,nSpots-1L do begin
+      spot = spots[iSpot]
 
-      ;;; Calculate this dot center on ellipsoid surface per ellipsoid axes
+      ;;; Calculate this spot center on ellipsoid surface per ellipsoid
+      ;;; axes
+      spot.WLongDeg=spot.WLongDeg-(obsWlong*(180./!PI))
+;stop
+      spotFiddle, axes, spot
 
-      dotFiddle, axes, dot
 
-      ;;; Calculate offsets from this dot's center to pixel positions, find
-      ;;; which pixels are in the dot i.e. within this dot's radius of its
-      ;;; center
+      ;;; Calculate offsets from this spot's center to pixel positions,
+      ;;; find which pixels are in the spot i.e. within this spot's radius
+      ;;; of its center
 
-      eDotOffsets = ePixelsNonZero - dot.Center ## nPixelSqOnes[0:ctNonZero-1L]
-      iwInDot = where( nx3_vnormsq( eDotOffsets) le (dot.Radius^2), ctInDot )
+      eSpotOffsets = ePixelsNonZero - spot.Center ## nPixelSqOnes[0:ctNonZero-1L]
+      iwInSpot = where( nx3_vnormsq( eSpotOffsets) le (spot.Radius^2), ctInSpot )
+      iwOutSpot=where(nx3_vnormsq(eSpotoffsets) gt (spot.Radius^2),ctOutSpot)
+      
+;      print,spot.center
+;      pause=get_kbrd()
 
-      ;;; Scale brightnesses of pixels in this dot
+      ;;; Scale brightnesses of pixels in this spot
 
-      if ctInDot gt 0L then begin
-        eBrightnesses[iwNonZero[iwInDot]] *= dot.Brightness
+      if ctInSpot gt 0L then begin
+        if (n_elements(spotalbedo) gt 0 ) then begin
+          eBrightnesses[iwNonZero[iwInSpot]] = ebrightnesses[iwnonzero[iwinSpot]]*spotalbedo[iSpot]
+        endif else begin
+          eBrightnesses[iwNonZero[iwInSpot]] *= spot.Brightness
+        endelse
+      endif 
+      if (n_elements(bgAlbedo) gt 0) then begin
+        eBrightnesses[iwNonZero[iwOutSpot]] = ebrightnesses[iwnonzero[iwOutSpot]]*bgAlbedo
       endif
 
-    endfor ;;; for idot=0L,nDots-1L
-  endif ;;; if ctNonZero gt 0L and nDots gt 0L
+    endfor ;;; for iSpot=0L,nSpots-1L
+  endif ;;; if ctNonZero gt 0L and nSpots gt 0L
 
-  img = make_array( nPixels, nPixels, val=0d0 )
-  img[*] = eBrightnesses
+  if (n_elements(bgAlbedo) gt 0 AND nSpots eq 0L) then begin
+    eBrightnesses=eBrightnesses*bgAlbedo
+  endif
+
+;stop
+  if (n_elements(scaling) eq 0) then begin
+    img = make_array( nPixels, nPixels, val=0d0 )
+    img[*] = eBrightnesses
+  endif else begin
+    ebrightnesses2=ebrightnesses
+    if (n_elements(bgalbedo) gt 0 AND n_elements(spotalbedo) gt 0) then begin
+      scalar=max([bgalbedo,spotalbedo])
+    endif else begin
+      scalar=max(ebrightnesses)
+    endelse
+    ebrightnesses2[0]=scalar
+    img = make_array( nPixels, nPixels, val=0d0 )
+    img[*] = eBrightnesses2
+  endelse
 
 
   ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -651,9 +688,9 @@ end
 ;;; - 64x64 pixel images
 
 
-dots = [ getDot( 20, 10, 2.8) ]
+spots = [ getSpot( 20, 10, 2.8) ]
 
-rtn = ilc([7,4,2],-10,60,10 ,obsWLong=indgen(37)*10 ,nPixels=64, dots=dots)
+rtn = ilc([7,4,2],-10,60,10 ,obsWLong=indgen(37)*10 ,nPixels=64, spots=spots)
 
 
 ;catcherr=0L
@@ -680,6 +717,32 @@ plot,rtn.obsWLongDeg,rtn.dib $
     , YTITLE='Disk-Integrated Brightness, arbitrary units' $
     , COLOR=ishft(255L,16) $
     , /NOERASE, /NOCLIP  ;;; Over-plot lightcurve in blue
+    
+; OR!
+
+spots = [ getSpot( 20, 10, 2.8) ]
+rtn=ilc([4,4,4],0,10,0,obsWLong=indgen(37)*10,nPixels=64,bgAlbedo=0.6,$
+spotalbedo=[0.7],spots=spots,/scaling)
+
+tv,make_array(!D.X_SIZE*2,!D.Y_SIZE*2,val=255b)
+
+for i=0,35 do tvscl, rtn[i].img , 64+(i MOD 9)*66, 64+(i/9)*66  ;;; display 36 images
+
+tots=rtn.dib
+dmags=make_array(n_elements(tots),value=0d)
+for i=0,n_elements(tots)-1 do dmags[i]=-2.5*alog10(tots[i]/median(tots,/even)) 
+
+y1=max(dmags)+(0.1*(max(dmags)-min(dmags)))
+y2=min(dmags)-(0.1*(max(dmags)-min(dmags)))
+plot,rtn.obsWLongDeg,dmags,yr=[y1,y2],/ystyle $
+    , XSTYLE=1, XTICKINTERVAL=90 $
+    , PSYM=-6 $
+    , SYMSIZE=1.5 $
+    , XTITLE='Sub-observer longitude, degW' $
+    , YTITLE='Disk-Integrated Brightness, arbitrary units' $
+    , COLOR=ishft(255L,16) $
+    , /NOERASE, /NOCLIP  ;;; Over-plot lightcurve in blue
+
 
 ;;; To write a PNG of the plot:
 ;;;
