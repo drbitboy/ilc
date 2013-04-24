@@ -211,7 +211,6 @@ function ilc $
 , Arg2PhotFunc=Args2PhotFunc $  ;;; Optional argument to PhotFunc
 , spots=spots $           ;;; Surface spots
 , bgAlbedo=bgAlbedo $     ;;; Background albedo (0 to 1)
-, spotAlbedo=spotAlbedo $ ;;; nSpot element containing the albedo of each spot
 , scaling=scaling $       ;;; if this keyword is set, the .img files will be normalized to each other
 , debug=debugArg
 
@@ -235,7 +234,6 @@ common rpdCommon
                 , Arg2PhotFunc=Args2PhotFunc $
                 , spots=spots $
                 , bgAlbedo=bgAlbedo $
-                , spotAlbedo=spotAlbedo $ 
                 , scaling=scaling $
                 , debug=debugArg $
                 )
