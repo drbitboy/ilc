@@ -1,13 +1,25 @@
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; ILC.PRO - IDL/GDL LightCurve generator
+;;;
+;;; - GDL, gnu data language, see
+;;;
+;;;     http://gnudatalanguage.sourceforge.net/
+;;;
+;;; - IDL, Interactive Data Language, see
+;;;
+;;;     http://www.exelisvis.com/ProductsServices/IDL.aspx
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
 See ilc.pro for more detail
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;;; ILC.PRO - IDL LightCurve generator
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; FUNCTION ILC
 ;;;
 ;;; Calculate Disk-Resolved and Disk-Integrated Brightness (dib) for
 ;;; ellipsoid given lighting and viewing geometries, assuming Sun and
 ;;; observer are at infinite distances.
+;;;
+;;; Allows spots to be added to the surface
 ;;;
 ;;; N.B. All input longitudes are degrees WEST!
 ;;;
@@ -23,6 +35,7 @@ See ilc.pro for more detail
 ;;;   obsWLong       Sub-observer West longitude(s), default=0
 ;;;   nPixel         Size of image, default=512
 ;;;   albedoMap      Albedo map (not yet implemented)
+;;;   spots          Array of Lat,WLong,Radius,Brightness spot structures
 ;;;   PhotFunc       String; name of photometric func
 ;;;   Arg2PhotFunc   Optional argument to PhotFunc
 ;;;   debug         
