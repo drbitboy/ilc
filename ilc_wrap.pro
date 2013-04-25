@@ -144,7 +144,8 @@ endif else begin
 
 endelse
 
-if keyword_set(!gdl) then begin
+thisIsGdl,isGdl
+if keyword_set(isGdl) then begin
   siSfx = '.jpg'
   siJpeg = 1
   ptr_free,ptr_new(siTiff,/no_copy)
@@ -162,7 +163,7 @@ endif
 
 if (n_elements(save) ge 1) then begin
 
-  if keyword_set(!gdl) then begin
+  if keyword_set(isGdl) then begin
     write_jpeg,strtrim(save[0],2)+siSfx,tvrd(order=0,true=1)
   endif else begin
     saveimage,strtrim(save[0],2)+siSfx,tiff=siTiff,jpeg=siJpeg

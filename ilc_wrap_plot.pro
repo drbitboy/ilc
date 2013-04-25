@@ -13,11 +13,11 @@ function ilc_wrap_plot, Xs, Ys $
 
   if !d.name eq 'PS' then begin
     charSize=1.4
-    thick=1.5
+    thick=4
     font=10
   endif else begin
     charSize=1.4
-    thick=4
+    thick=1.5
   endelse
 
   !x.tickinterval = 90
@@ -38,8 +38,16 @@ function ilc_wrap_plot, Xs, Ys $
       , NOERASE=NOERASE $
       , NOCLIP=NOCLIP
 
-  if n_elements(dmerr) eq n_elements(Xs) and not keyword_set(!gdl) then begin
-    plotyerr,Xs,Ys,dmerr,/hat,thick=thick
+  thisIsGdl,isGdl
+  if n_elements(dmerr) eq n_elements(Xs) and not keyword_set(isGdl) then begin
+    catcherr = 0L
+    catch,catcherr
+    if catcherr eq 0L then begin
+      plotyerr,Xs,Ys,dmerr,/hat,thick=thick
+    endif else begin
+      message,/continue,'Skipping PLOTYERR ...'
+    endelse
+    catch,/cancel
   end
 
   return, 0b

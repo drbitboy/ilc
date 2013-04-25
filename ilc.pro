@@ -212,6 +212,10 @@ function ilc $
 , spots=spots $           ;;; Surface spots
 , bgAlbedo=bgAlbedo $     ;;; Background albedo (0 to 1)
 , scaling=scaling $       ;;; if this keyword is set, the .img files will be normalized to each other
+, sunUp=sunUp $           ;;; if this keyword is set, the .img files will be normalized to each other
+, sunDown=sunDown $       ;;; if this keyword is set, the .img files will be normalized to each other
+, sunLeft=sunLeft $       ;;; if this keyword is set, the .img files will be normalized to each other
+, sunRight=sunRight $     ;;; if this keyword is set, the .img files will be normalized to each other
 , debug=debugArg
 
 common rpdCommon
@@ -235,6 +239,10 @@ common rpdCommon
                 , spots=spots $
                 , bgAlbedo=bgAlbedo $
                 , scaling=scaling $
+                , sunUp=sunUp $
+                , sunDown=sunDown $
+                , sunLeft=sunLeft $
+                , sunRight=sunRight $
                 , debug=debugArg $
                 )
       if iLongitude eq 0L then begin
@@ -303,14 +311,31 @@ common rpdCommon
   ;;; - There will be two unit grid vectors in that plane used to build
   ;;;   the grid:  one representing Up; one representing Right
 
-  ;;; - Initially attempt to define "UP" normal to a plane defined by
-  ;;;   three points:  observer; ellipsoid; sun.
-  eUp = crossp( eObs, eSun )
+  ;;; - If one of the sun* keywords is set, attempt to define "UP" relative
+  ;;;   to a plane defined by three points:   observer; ellipsoid; sun.
+
+  notZUp = 1b
+  if keyword_set( sunRight ) then begin
+    eUp = crossp( eObs, eSun )
+  endif else if keyword_set( sunLeft ) then begin
+    eUp = crossp( eSun, eObs )
+  endif else if keyword_set( sunUp ) then begin
+    right = crossp( eSun, eObs )
+    eUp = crossp( eObs, right )
+  endif else if keyword_set( sunDown ) then begin
+    right = crossp( eObs, eSun )
+    eUp = crossp( eObs, right )
+  endif else begin
+    ;;; Default to Z-up
+    notZUp = 0b
+    right = crossp( [0d0,0,1], eObs )
+    eUp = crossp( eObs, right )
+  endelse
 
   ;;; - Handle special case of zero phase (collinear obs.-ellipsoid-sun)
   ;;;   - I.e. eUp, as calculated above is zero-length
   ;;;   - make Up coincident with +Z in image plane
-  if vnormsq(eUp) eq 0d0 then begin
+  if (vnormsq(eUp) eq 0d0) and notZUp then begin
     right = crossp( [0d0,0,1], eObs )
     eUp = crossp( eObs, right )
   endif
@@ -325,6 +350,8 @@ common rpdCommon
   eUp = vhat(eUp)
   eRight = vhat( crossp(eUp,eObs) )
 
+  ;;; - Get ellipsoid Z in FOV frame:  [X,Y,Z] => [Right,Up,Obs]
+  eZRUO = vhat( [ eRight[2], eUp[2], eobs[2] ] )
 
   ;;; - Convert nPixels argument into even number of pixels in square array
   nPixels = ( long( n_elements(nPixelsArg) eq 1L ? nPixelsArg[0] : 512 ) / 2L ) * 2L
@@ -659,9 +686,30 @@ common rpdCommon
     img[0]=max(array)
   endif
 
+  eZRightUp = eZRUO[0:1]
+  if total(ezRightUp^2) gt 0L then begin
+    eZRightUp = eZRightUp * (np2 / max(abs(eZRightUp[0:1])))
+    eIZRUs = [ [floor( ([nPixels,nPixels]/2d0) - eZRightUp )] $
+            , [floor( ([nPixels,nPixels]/2d0) + eZRightUp )] $
+            ]
+    pattern = make_array( 9, val=0d0 )
+    pattern[4] = max(img)
+    for iTailHead=0L,1L do begin
+      eIZRU = eIZRUs[*,iTailHead]
+      for iPixel=0L,8L do begin
+        iPos = eIZRU + [ iPixel MOD 3L, iPixel/3L ] - 1L
+        mx = max( iPos, min=mn)
+        if mx ge nPixels or mn lt 0L then continue
+        img[iPos[0],iPos[1]] = pattern[iPixel]
+      endfor
+      pattern = pattern[4] - pattern
+    endfor
+  endif
+
 
   ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
   ;;; N.B. Abbreviation DIB means Disk-Integrated Brightness
+  ;;; N.B. zClock is ellipsoid +Z azimuth CW from Up (Up, East of North)
 
   return, { dib: total(eBrightnesses) $
           , img: img $
@@ -669,6 +717,7 @@ common rpdCommon
           , obsWLongDeg: obsWLong*dpr $
           , sunLatDeg: sunLat*dpr $
           , sunWLongDeg: sunWLong*dpr $
+          , zClockDeg: (atan( eZRUO[0], eZRUO[1])*dpr + 360) MOD 360L $
           }
 end
 
@@ -696,17 +745,17 @@ end
 ;  catch,cancel
 ;endif else begin
 ;  catch,cancel
-  tv,make_array(!D.X_SIZE*2,!D.Y_SIZE*2,val=255b)
+  tv,make_array(!D.X_SIZE*2,!D.Y_SIZE*2,val=27b)
 ;endelse
 
 if keyword_set(doBrian) then begin
   ;;; Brian's test
 
-  spots = [ createSpot( 12, 170, 1.5) $
+  spots = [ createSpot( 22, 170, 1.5) $
           , createSpot( 12, 100, 2.0) $
           ]
 
-  rtn = ilc([7,5,3],2,-70,20 ,obsWLong=indgen(37)*10 ,nPixels=64, spots=spots)
+  rtn = ilc([7,5,3],38,-70,20 ,obsWLong=indgen(37)*10 ,nPixels=64, spots=spots,sunRight=1)
 
   for i=0,35 do $
     tvscl, rtn[i].img $
