@@ -641,15 +641,23 @@ common rpdCommon
     eBrightnesses=eBrightnesses*bgAlbedo
   endif
 
-  if keyword_set(scaling) then begin
-    array = [0d0]
-    if n_elements(bgalbedo) gt 0L then array = [ array, bgalbedo ]
-    if nSpots gt 0L then array = [ array, spots.Brightness ]
-    eBrightnesses[0]=max(array)
-  endif
+
+  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+  ;;; Copy brightnesses to an image
 
   img = make_array( nPixels, nPixels, val=0d0 )
   img[*] = eBrightnesses
+
+
+  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+  ;;; If ,/scaling then put dummy max value into img for scaling via tvscl
+
+  if keyword_set(scaling) then begin
+    array = [ n_elements(bgalbedo) gt 0L ? bgalbedo : 0d0 $
+            , nSpots gt 0L ? spots.Brightness : 0d0 $
+            ]
+    img[0]=max(array)
+  endif
 
 
   ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
